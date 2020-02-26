@@ -294,6 +294,11 @@ public class JedisSentinelPool extends JedisPoolAbstract {
       this.subscribeRetryWaitTimeMillis = subscribeRetryWaitTimeMillis;
     }
 
+    /**
+     * sentinel监听任务线程: 监听主节点IP端口信息变更，信息一旦变更则重新初始化连接池
+     * 1. 主动获取：通过"sentinel get-master-addr-by-name <masterName>"指令获取；
+     * 2. 消息通知：通过订阅"+switch-master"频道获取。
+     */
     @Override
     public void run() {
 
@@ -317,6 +322,7 @@ public class JedisSentinelPool extends JedisPoolAbstract {
             initPool(toHostAndPort(masterAddr));
           }
 
+          //订阅主节点变更频道（+switch-master）
           j.subscribe(new JedisPubSub() {
             @Override
             public void onMessage(String channel, String message) {
@@ -324,6 +330,8 @@ public class JedisSentinelPool extends JedisPoolAbstract {
 
               String[] switchMasterMsg = message.split(" ");
 
+              //+switch-master事件消息格式:
+              //<masterName> <old master ip> <old master port> <new master ip> <new master port>
               if (switchMasterMsg.length > 3) {
 
                 if (masterName.equals(switchMasterMsg[0])) {

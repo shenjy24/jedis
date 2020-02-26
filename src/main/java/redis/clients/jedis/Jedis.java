@@ -3028,6 +3028,7 @@ public class Jedis extends BinaryJedis implements JedisCommands, MultiKeyCommand
   }
 
   /**
+   * sentinel get-master-addr-by-name <masterName> 指令获取主节点ip和端口
    * <pre>
    * redis 127.0.0.1:26381&gt; sentinel get-master-addr-by-name mymaster
    * 1) "127.0.0.1"
