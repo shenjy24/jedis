@@ -210,6 +210,11 @@ public class JedisSentinelPool extends JedisPoolAbstract {
 
     log.info("Redis master running at " + master + ", starting Sentinel listeners...");
 
+    /**
+     * 为每个sentinel添加监听器：主要监听主节点IP端口信息变更，信息一旦变更则重新初始化连接池
+     * 1. 主动获取：通过"sentinel get-master-addr-by-name <masterName>"指令获取；
+     * 2. 消息通知：通过订阅"+switch-master"频道获取。
+     */
     for (String sentinel : sentinels) {
       final HostAndPort hap = HostAndPort.parseString(sentinel);
       MasterListener masterListener = new MasterListener(masterName, hap.getHost(), hap.getPort());

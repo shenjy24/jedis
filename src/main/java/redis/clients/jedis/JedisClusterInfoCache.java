@@ -66,10 +66,41 @@ public class JedisClusterInfoCache {
   }
 
   public void discoverClusterNodesAndSlots(Jedis jedis) {
+    //写锁保证只有一个连接进行初始化
     w.lock();
 
     try {
+      //清空旧的节点和槽数据，并关闭节点连接
       reset();
+      //使用"cluster slots"指令获取Cluster节点和槽的映射关系
+      /**
+       * 返回结构如下：
+       * 127.0.0.1:6379> cluster slots
+       * 1) 1) (integer) 5462    -- 起始槽
+       *    2) (integer) 10922   -- 终止槽
+       *    3) 1) "127.0.0.1"    -- 主节点IP
+       *       2) (integer) 6380 -- 主节点端口
+       *       3) "85371dd3c2c11dbb1cd506ed028de10bb7fa2816"  -- 主节点runId
+       *    4) 1) "127.0.0.1"    -- 从节点IP
+       *       2) (integer) 6383 -- 从节点端口
+       *       3) "01740d2eb2c9f89014e2b8b673d444753d0685cd"  -- 从节点runId
+       * 2) 1) (integer) 10923
+       *    2) (integer) 16383
+       *    3) 1) "127.0.0.1"
+       *       2) (integer) 6381
+       *       3) "aacad0a5a2b37d4e11f2253849263575adb78740"
+       *    4) 1) "127.0.0.1"
+       *       2) (integer) 6384
+       *       3) "5e099198bba08597d695f6e2e3db2d6ec1494534"
+       * 3) 1) (integer) 0
+       *    2) (integer) 5461
+       *    3) 1) "127.0.0.1"
+       *       2) (integer) 6379
+       *       3) "672cc8350bb1ac1d94e9c511ea234f6b7f86cab1"
+       *    4) 1) "127.0.0.1"
+       *       2) (integer) 6382
+       *       3) "6bab67c3619c4b9cbdfd247ff3e446308a0c6326"
+       */
       List<Object> slots = jedis.clusterSlots();
 
       for (Object slotInfoObj : slots) {
@@ -79,9 +110,15 @@ public class JedisClusterInfoCache {
           continue;
         }
 
+        //解析出所负责的的所有槽
         List<Integer> slotNums = getAssignedSlotArray(slotInfo);
 
         // hostInfos
+        /**
+         *  解析主节点和从节点信息，构建槽和节点的映射关系：
+         *  1. 添加nodes元素，key为"<ip>:<port>"，value为该节点对应的JedisPool连接池
+         *  2. 添加slots元素，key为"slotNum"，value为该槽对应节点的JedisPool连接池
+         */
         int size = slotInfo.size();
         for (int i = MASTER_NODE_INDEX; i < size; i++) {
           List<Object> hostInfos = (List<Object>) slotInfo.get(i);
@@ -89,9 +126,14 @@ public class JedisClusterInfoCache {
             continue;
           }
 
+          //获取节点IP端口信息
           HostAndPort targetNode = generateHostAndPort(hostInfos);
+          //设置nodes，Map.Entry结构为<ip:port, JedisPool>
+          //从节点和主节点都会进行保存
           setupNodeIfNotExist(targetNode);
           if (i == MASTER_NODE_INDEX) {
+            //设置slots，Map.Entry结构为<slot, JedisPool>
+            //只需要设置槽和主节点的映射关系
             assignSlotsToNode(slotNums, targetNode);
           }
         }
